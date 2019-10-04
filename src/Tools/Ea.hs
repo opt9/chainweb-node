@@ -8,7 +8,7 @@
 {-# LANGUAGE TypeOperators #-}
 
 -- |
--- Module: Ea
+-- Module: Tools.Ea
 -- Copyright: Copyright © 2019 Kadena LLC.
 -- License: MIT
 -- Maintainer: Colin Woodbury <colin@kadena.io>
@@ -27,7 +27,7 @@
 --
 -- Eä means "to be" in Quenya, the ancient language of Tolkien's elves.
 --
-module Ea ( main ) where
+module Tools.Ea ( main ) where
 
 import BasePrelude
 

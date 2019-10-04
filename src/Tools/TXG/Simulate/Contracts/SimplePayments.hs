@@ -4,7 +4,7 @@
 {-# LANGUAGE TypeApplications #-}
 
 -- |
-module TXG.Simulate.Contracts.SimplePayments where
+module Tools.TXG.Simulate.Contracts.SimplePayments where
 
 import Data.Aeson
 import Data.List.NonEmpty (NonEmpty)
@@ -27,8 +27,8 @@ import Pact.Types.ChainMeta (PublicMeta(..))
 import Pact.Types.Command (Command(..), SomeKeyPairCaps)
 
 -- CHAINWEB
-import TXG.Simulate.Contracts.Common
-import TXG.Simulate.Utils
+import Tools.TXG.Simulate.Contracts.Common
+import Tools.TXG.Simulate.Utils
 
 simplePaymentsContractLoader :: PublicMeta -> NonEmpty SomeKeyPairCaps -> IO (Command Text)
 simplePaymentsContractLoader meta adminKS = do

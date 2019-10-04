@@ -2,7 +2,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 
 -- |
--- Module: ChainDb2Gexf
+-- Module: Tools.ChainDb2Gexf
 -- Copyright: Copyright © 2019 Kadena LLC.
 -- License: MIT
 -- Maintainer: Lars Kuhtz <lars@kadena.io>
@@ -10,7 +10,7 @@
 --
 -- TODO
 --
-module Chain2Gexf ( main, opts ) where
+module Tools.Chain2Gexf ( main, opts ) where
 
 import Control.Error.Util (note)
 import Control.Monad.IO.Class
@@ -34,7 +34,7 @@ import Chainweb.TreeDB.Persist (fileEntries)
 import Chainweb.Version
     (ChainwebVersion(..), chainwebVersionFromText, chainwebVersionId)
 
-import Gexf
+import Tools.Gexf
 
 ---
 

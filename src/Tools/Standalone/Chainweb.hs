@@ -2,7 +2,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TypeFamilies      #-}
 
--- | Module: Standalone.Chainweb
+-- | Module: Tools.Standalone.Chainweb
 -- Copyright: Copyright © 2019 Kadena LLC.
 -- License: MIT
 -- Maintainer: Emmanuel Denloye-Ito <emmanuel@kadena.io>
@@ -10,7 +10,7 @@
 --
 -- TODO
 --
-module Standalone.Chainweb where
+module Tools.Standalone.Chainweb where
 
 import Control.Concurrent.MVar
 import Control.Lens
@@ -57,7 +57,7 @@ import Chainweb.WebPactExecutionService
 import qualified Chainweb.Mempool.InMem as Mempool
 import qualified Chainweb.Mempool.InMemTypes as Mempool
 
-import Standalone.Utils
+import Tools.Standalone.Utils
 
 withChainwebStandalone
     :: Logger logger

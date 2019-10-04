@@ -14,7 +14,7 @@
 {-# LANGUAGE TypeFamilies #-}
 
 -- |
--- Module: TxStream
+-- Module: Tools.TxStream
 -- Copyright: Copyright © 2019 Kadena LLC.
 -- License: MIT
 -- Maintainer: Lars Kuhtz <lars@kadena.io>
@@ -22,7 +22,7 @@
 --
 -- Print all transactions in a chain starting with the most recent block
 --
-module TxStream
+module Tools.TxStream
 ( main
 , mainWithConfig
 , testLogfun

@@ -11,7 +11,7 @@
 {-# OPTIONS_GHC -fno-warn-incomplete-uni-patterns #-}
 {-# OPTIONS_GHC -fno-warn-unused-imports #-}
 
-module TXG.Repl
+module Tools.TXG.Repl
   (
   -- * Core functions
     send
@@ -40,7 +40,7 @@ module TXG.Repl
   , module Chainweb.ChainId
   , module Chainweb.Version
   , module Pact.Types.ChainMeta
-  , module TXG.Simulate.Contracts.CoinContract
+  , module Tools.TXG.Simulate.Contracts.CoinContract
   ) where
 
 import Data.Aeson
@@ -65,10 +65,10 @@ import Chainweb.ChainId
 import Chainweb.HostAddress
 import Chainweb.Version
 
-import TXG.ReplInternals
-import TXG.Simulate.Contracts.CoinContract
-import TXG.Simulate.Contracts.Common
-import TXG.Simulate.Utils
+import Tools.TXG.ReplInternals
+import Tools.TXG.Simulate.Contracts.CoinContract
+import Tools.TXG.Simulate.Contracts.Common
+import Tools.TXG.Simulate.Utils
 
 -- Helper for simplifying construction of RequestKeys
 rk :: String -> RequestKeys

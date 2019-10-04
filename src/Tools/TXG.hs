@@ -14,7 +14,7 @@
 
 {-# OPTIONS_GHC -fno-warn-missing-signatures #-}
 
--- | Module: TXG
+-- | Module: Tools.TXG
 -- Copyright: Copyright © 2019 Kadena LLC.
 -- License: MIT
 -- Maintainer: Emmanuel Denloye-Ito <emmanuel@kadena.io>
@@ -23,7 +23,7 @@
 -- TODO
 --
 
-module TXG ( main ) where
+module Tools.TXG ( main ) where
 
 import BasePrelude hiding (loop, rotate, timeout, (%))
 
@@ -81,12 +81,12 @@ import Chainweb.RestAPI.Utils
 import Chainweb.Utils
 import Chainweb.Version
 
-import TXG.Simulate.Contracts.CoinContract
-import qualified TXG.Simulate.Contracts.Common as Sim
-import TXG.Simulate.Contracts.HelloWorld
-import TXG.Simulate.Contracts.SimplePayments
-import TXG.Simulate.Utils
-import TXG.Types
+import Tools.TXG.Simulate.Contracts.CoinContract
+import qualified Tools.TXG.Simulate.Contracts.Common as Sim
+import Tools.TXG.Simulate.Contracts.HelloWorld
+import Tools.TXG.Simulate.Contracts.SimplePayments
+import Tools.TXG.Simulate.Utils
+import Tools.TXG.Types
 
 import Utils.Logging
 import qualified Utils.Logging.Config as U

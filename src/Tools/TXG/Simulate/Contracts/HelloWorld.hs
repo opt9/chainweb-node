@@ -2,7 +2,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE QuasiQuotes #-}
 
--- | Module: Main
+-- | Module: Tools.TXG.Simulate.Contracts.HelloWorld
 -- Copyright: Copyright © 2019 Kadena LLC.
 -- License: MIT
 -- Maintainer: Emmanuel Denloye-Ito <emamnuel@kadena.io>
@@ -11,7 +11,7 @@
 -- TODO
 --
 
-module TXG.Simulate.Contracts.HelloWorld where
+module Tools.TXG.Simulate.Contracts.HelloWorld where
 
 import Data.Aeson
 import Data.Default
@@ -37,7 +37,7 @@ import Pact.Types.Command (Command(..), SomeKeyPairCaps)
 
 -- chainweb
 
-import TXG.Simulate.Utils
+import Tools.TXG.Simulate.Utils
 
 
 helloWorldContractLoader

@@ -6,7 +6,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 
 -- |
--- Module: Gexf
+-- Module: Tools.Gexf
 -- Copyright: Copyright © 2018 Kadena LLC.
 -- License: MIT
 -- Maintainer: Lars Kuhtz <lars@kadena.io>
@@ -14,7 +14,7 @@
 --
 -- TODO
 --
-module Gexf
+module Tools.Gexf
 ( blockHeaders2gexf
 , blockMap2gexf
 , readP2pSessions

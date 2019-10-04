@@ -6,7 +6,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeOperators #-}
 
-module RunNodes ( main, runNodesOpts ) where
+module Tools.RunNodes ( main, runNodesOpts ) where
 
 import BasePrelude hiding (option, (%))
 import Chainweb.Graph (petersonChainGraph)

@@ -1,6 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-module TXG.Simulate.Utils where
+module Tools.TXG.Simulate.Utils where
 
 import Control.Monad.IO.Class
 

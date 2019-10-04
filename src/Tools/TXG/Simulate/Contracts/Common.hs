@@ -7,7 +7,7 @@
 
 {-# OPTIONS_GHC -fno-warn-incomplete-uni-patterns #-}
 
-module TXG.Simulate.Contracts.Common
+module Tools.TXG.Simulate.Contracts.Common
   ( -- * Types
     Account(..)
   , Amount(..)
@@ -72,7 +72,7 @@ import Pact.Types.Crypto
 import Chainweb.ChainId
 import Chainweb.Time
 import Chainweb.Utils
-import TXG.Simulate.Utils
+import Tools.TXG.Simulate.Utils
 
 
 

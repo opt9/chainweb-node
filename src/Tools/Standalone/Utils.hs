@@ -8,7 +8,7 @@
 {-# OPTIONS_GHC -fno-warn-type-defaults #-}
 {-# OPTIONS_GHC -fno-warn-incomplete-uni-patterns #-}
 
-module Standalone.Utils where
+module Tools.Standalone.Utils where
 
 import Control.Concurrent.STM
 import Control.Monad

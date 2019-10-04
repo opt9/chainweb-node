@@ -14,7 +14,7 @@
 {-# LANGUAGE TypeApplications #-}
 
 {-# OPTIONS_GHC -fno-warn-orphans #-}
--- | Module: Standalone
+-- | Module: Tools.Standalone
 -- Copyright: Copyright © 2019 Kadena LLC.
 -- License: MIT
 -- Maintainer: Emmanuel Denloye-Ito <emmanuel@kadena.io>
@@ -22,7 +22,7 @@
 --
 -- TODO
 --
-module Standalone where
+module Tools.Standalone where
 
 import Configuration.Utils hiding (disabled, Error)
 
@@ -79,8 +79,8 @@ import Chainweb.Time
 import Chainweb.Utils
 import Chainweb.Version
 
-import Standalone.Chainweb
-import Standalone.Utils
+import Tools.Standalone.Chainweb
+import Tools.Standalone.Utils
 
 -- -------------------------------------------------------------------------- --
 -- Monitors

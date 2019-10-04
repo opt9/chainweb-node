@@ -1,5 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
-module Main where
+module Tools.CwTool where
 
 import System.Environment
 import System.Exit

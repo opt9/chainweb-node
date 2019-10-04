@@ -5,7 +5,7 @@
 
 {-# OPTIONS_GHC -fno-warn-missing-signatures #-}
 
-module TXG.ReplInternals where
+module Tools.TXG.ReplInternals where
 
 import Control.Lens
 import Control.Monad
@@ -49,10 +49,10 @@ import Chainweb.Pact.RestAPI
 import Chainweb.RestAPI.Utils
 #endif
 
-import TXG.Simulate.Contracts.HelloWorld
-import TXG.Simulate.Contracts.SimplePayments
-import TXG.Simulate.Contracts.CoinContract
-import TXG.Simulate.Utils
+import Tools.TXG.Simulate.Contracts.HelloWorld
+import Tools.TXG.Simulate.Contracts.SimplePayments
+import Tools.TXG.Simulate.Contracts.CoinContract
+import Tools.TXG.Simulate.Utils
 
 -- for ghci
 

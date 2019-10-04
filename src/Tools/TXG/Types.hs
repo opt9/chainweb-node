@@ -9,7 +9,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TypeApplications #-}
 
--- | Module: TXG.Types
+-- | Module: Tools.TXG.Types
 -- Copyright: Copyright © 2019 Kadena LLC.
 -- License: MIT
 -- Maintainer: Emmanuel Denloye-Ito <emmanuel@kadena.io>
@@ -17,7 +17,7 @@
 --
 -- TODO
 --
-module TXG.Types
+module Tools.TXG.Types
   ( -- * TXCmd
     TXCmd(..)
   , SingleTX(..)
@@ -79,7 +79,7 @@ import Chainweb.Version
 
 import Pact.Types.Command (SomeKeyPairCaps)
 
-import qualified TXG.Simulate.Contracts.Common as Sim
+import qualified Tools.TXG.Simulate.Contracts.Common as Sim
 import qualified Utils.Logging.Config as U
 
 ---
