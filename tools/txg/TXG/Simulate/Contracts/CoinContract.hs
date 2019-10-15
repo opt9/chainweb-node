@@ -107,7 +107,7 @@ createCoinContractRequest v meta ks request =
       CoinTransferAndCreate (SenderName (Account sn)) (ReceiverName (Account rn)) (Guard guard) (Amount amount) -> do
         let theCode =
               printf
-              "(coin.transfer-and-create \"%s\" \"%s\" (read-keyset \"%s\") %f)"
+              "(coin.transfer-create \"%s\" \"%s\" (read-keyset \"%s\") %f)"
               sn
               rn
               ("receiver-guard" :: String)
