@@ -113,11 +113,12 @@ _run :: [String] -> IO ()
 _run args = withArgs args $ C.defaultMain [bench]
 
 bench :: C.Benchmark
-bench = C.bgroup "PactServiceBench" $
+bench = C.bgroup "PactService" $
     [ C.bench "forkingBench" $ withResources 10 Quiet forkingBench
-    , C.bench "oneBlock-5" $ oneBlock 5
+    , C.bench "oneBlock-0" $ oneBlock 0
+    , C.bench "oneBlock-1" $ oneBlock 0
     , C.bench "oneBlock-10" $ oneBlock 10
-    , C.bench "oneBlock-25" $ oneBlock 25
+    , C.bench "oneBlock-50" $ oneBlock 50
     ]
   where
     forkingBench mainLineBlocks pdb bhdb nonceCounter pactQueue _ = do
