@@ -1067,17 +1067,18 @@ applyPactCmd
     -> ModuleCache
     -> DList (P.CommandResult P.Hash)
     -> PactServiceM cas (T2 (DList (P.CommandResult P.Hash)) ModuleCache)
-applyPactCmd isGenesis dbEnv cmdIn miner mcache dl = do
+applyPactCmd isGenesis dbEnv cmdIn _miner mcache dl = do
     logger <- view (psCheckpointEnv . cpeLogger)
-    gasModel <- view psGasModel
+    _gasModel <- view psGasModel
     excfg <- view psEnableUserContracts
 
     T2 result mcache' <- if isGenesis
       then liftIO $! applyGenesisCmd logger dbEnv def P.noSPVSupport (payloadObj <$> cmdIn)
       else do
-        pd <- mkPublicData "applyPactCmd" (publicMetaOf $ payloadObj <$> cmdIn)
-        spv <- use psSpvSupport
-        liftIO $! applyCmd logger dbEnv miner gasModel pd spv cmdIn mcache excfg
+        -- pd <- mkPublicData "applyPactCmd" (publicMetaOf $ payloadObj <$> cmdIn)
+        -- spv <- use psSpvSupport
+        -- liftIO $! applyCmd logger dbEnv miner gasModel pd spv cmdIn mcache excfg
+        liftIO $! _applyCmd logger dbEnv cmdIn excfg mcache
 
     when isGenesis $
       psInitCache <>= mcache'

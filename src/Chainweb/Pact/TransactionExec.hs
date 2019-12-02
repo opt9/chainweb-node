@@ -21,6 +21,7 @@
 module Chainweb.Pact.TransactionExec
 ( -- * Transaction Execution
   applyCmd
+, _applyCmd
 , applyGenesisCmd
 , applyLocal
 , applyExec
@@ -117,6 +118,22 @@ magic_GAS = mkMagicCapSlot "GAS"
 magic_GENESIS :: CapSlot UserCapability
 magic_GENESIS = mkMagicCapSlot "GENESIS"
 
+
+_applyCmd
+    :: Logger
+    -> PactDbEnv p
+    -> Command PayloadWithText
+    -> Bool
+    -> ModuleCache
+    -> IO (T2 (CommandResult [TxLog Value]) ModuleCache)
+_applyCmd l pdbenv cmdIn b mc = second _txCache
+    <$> runTransactionM cenv txst (jsonErrorResult (PactError EvalError def [] "noop") "noop")
+  where
+    cenv = TransactionEnv Transactional pdbenv l def noSPVSupport Nothing 0.0 rk 0 ecfg
+    txst = TransactionState mc mempty 0 Nothing (_geGasModel freeGasEnv)
+    cmd = payloadObj <$> cmdIn
+    rk = cmdToRequestKey cmd
+    ecfg = ExecutionConfig b False
 
 -- | The main entry point to executing transactions. From here,
 -- 'applyCmd' assembles the command environment for a command and
@@ -317,16 +334,16 @@ jsonErrorResult
     :: PactError
     -> Text
     -> TransactionM p (CommandResult [TxLog Value])
-jsonErrorResult err msg = do
+jsonErrorResult err _msg = do
     logs <- use txLogs
     gas <- view txGasLimit -- error means all gas was charged
     rk <- view txRequestKey
-    l <- view txLogger
-    liftIO
-      $! logLog l "ERROR"
-      $! T.unpack msg
-      <> ": " <> show rk
-      <> ": " <> show err
+    _l <- view txLogger
+    -- liftIO
+    --   $! logLog l "ERROR"
+    --   $! T.unpack msg
+    --   <> ": " <> show rk
+    --   <> ": " <> show err
 
     return $! CommandResult rk Nothing (PactResult (Left err))
       gas (Just logs) Nothing Nothing
