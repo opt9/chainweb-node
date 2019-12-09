@@ -126,7 +126,6 @@ import Chainweb.Version (ChainwebVersion(..), txEnabledDate, enableUserContracts
 import Data.CAS (casLookupM)
 
 
-
 pactLogLevel :: String -> LogLevel
 pactLogLevel "INFO" = Info
 pactLogLevel "ERROR" = Error
@@ -196,8 +195,9 @@ initPactService' ver cid chainwebLogger bhDb pdb dbDir nodeid doResetDb act = do
           !gasModel = tableGasModel defaultGasConfig
           !t0 = BlockCreationTime $ Time (TimeSpan (Micros 0))
 
+      stime <- newMVar @(Maybe (Time Micros)) Nothing
       let !pse = PactServiceEnv Nothing checkpointEnv pdb bhDb gasModel rs (enableUserContracts ver)
-          !pst = PactServiceState Nothing mempty 0 t0 Nothing P.noSPVSupport
+          !pst = PactServiceState Nothing mempty 0 t0 Nothing P.noSPVSupport stime
 
       evalPactServiceM pst pse act
   where
@@ -261,6 +261,15 @@ initializeCoinContract v cid pwo = do
     genesisHeader :: BlockHeader
     genesisHeader = genesisBlockHeader v cid
 
+
+time :: MonadIO m => Text -> m a -> m a
+time !label !act = do
+  t0 <- liftIO $ getCurrentTimeIntegral @Micros
+  a <- act
+  t1 <- liftIO $ getCurrentTimeIntegral @Micros
+  liftIO $ print $ label <> ": " <> sshow (t1 `diff` t0)
+  return a
+
 -- | Loop forever, serving Pact execution requests and reponses from the queues
 serviceRequests
     :: forall cas
@@ -273,6 +282,12 @@ serviceRequests memPoolAccess reqQ = do
     go `finally` logInfo "Stopping service"
   where
     go = do
+        -- use psReqTime >>= liftIO . readMVar >>= \case
+        --   Nothing -> return ()
+        --   Just t0 -> do
+        --     t1 <- liftIO $! getCurrentTimeIntegral
+        --     liftIO $! print $ "time between requests: " <> sshow (t1 `diff` t0)
+
         logDebug "serviceRequests: wait"
         msg <- liftIO $ getNextRequest reqQ
         logDebug $ "serviceRequests: " <> sshow msg
@@ -282,22 +297,42 @@ serviceRequests memPoolAccess reqQ = do
                 tryOne "execLocal" _localResultVar $ execLocal _localRequest
                 go
             NewBlockMsg NewBlockReq {..} -> do
+                -- time "execNewBlock" $
+                --   tryOne "execNewBlock" _newResultVar $
+                --     execNewBlock memPoolAccess _newBlockHeader _newMiner
+                --         _newCreationTime
                 tryOne "execNewBlock" _newResultVar $
                     execNewBlock memPoolAccess _newBlockHeader _newMiner
                         _newCreationTime
+
+                void $! do
+                  t <- liftIO $ getCurrentTimeIntegral
+                  mv <- liftIO $! newMVar $ Just t
+                  psReqTime .= mv
                 go
             ValidateBlockMsg ValidateBlockReq {..} -> do
-                tryOne' "execValidateBlock"
+                time "execValidateBlock" $
+                  tryOne' "execValidateBlock"
                         _valResultVar
                         (flip (validateHashes _valBlockHeader) _valPayloadData)
                         (execValidateBlock _valBlockHeader _valPayloadData)
+                -- tryOne' "execValidateBlock"
+                --         _valResultVar
+                --         (flip (validateHashes _valBlockHeader) _valPayloadData)
+                --         (execValidateBlock _valBlockHeader _valPayloadData)
+                void $! do
+                  t <- liftIO $ getCurrentTimeIntegral
+                  mv <- liftIO $! newMVar $ Just t
+                  psReqTime .= mv
                 go
             LookupPactTxsMsg (LookupPactTxsReq restorePoint txHashes resultVar) -> do
-                tryOne "execLookupPactTxs" resultVar $
+                time "execLookupPactTxs" $
+                  tryOne "execLookupPactTxs" resultVar $
                     execLookupPactTxs restorePoint txHashes
                 go
             PreInsertCheckMsg (PreInsertCheckReq txs resultVar) -> do
-                tryOne "execPreInsertCheckReq" resultVar $
+                time "execPreInsertCheckReq" $
+                  tryOne "execPreInsertCheckReq" resultVar $
                     fmap (V.map (() <$)) $ execPreInsertCheckReq txs
                 go
 
@@ -885,7 +920,7 @@ playOneBlock currHeader plData pdbenv = do
                         msg = [ (hash, validationErr hash) ]
                     in throwM $ TransactionValidationException msg
     -- transactions are now successfully validated.
-    !results <- go miner trans
+    !results <- time "execTransactions" $! go miner trans
     psStateValidated .= Just currHeader
 
     return $! toPayloadWithOutputs miner results
@@ -1013,9 +1048,9 @@ execTransactions
     -> PactServiceM cas Transactions
 execTransactions nonGenesisParentHash miner ctxs enfCBFail (PactDbEnv' pactdbenv) = do
     mc <- use psInitCache
-    coinOut <- runCoinbase nonGenesisParentHash pactdbenv miner enfCBFail mc
-    txOuts <- applyPactCmds isGenesis pactdbenv ctxs miner mc
-    return $! Transactions (paired txOuts) coinOut
+    coinOut <- time "runCoinbase" $! runCoinbase nonGenesisParentHash pactdbenv miner enfCBFail mc
+    txOuts <- time "applyPactCmds" $! applyPactCmds isGenesis pactdbenv ctxs miner mc
+    time "txouts" $! return $! Transactions (paired txOuts) coinOut
   where
     !isGenesis = isNothing nonGenesisParentHash
     cmdBSToTx = toTransactionBytes
@@ -1039,8 +1074,8 @@ runCoinbase (Just parentHash) dbEnv miner enfCBFail mc = do
 
     let !bh = BlockHeight $ P._pdBlockHeight pd
 
-    reward <- liftIO $! minerReward rs bh
-    cr <- liftIO $! applyCoinbase logger dbEnv miner reward pd parentHash enfCBFail mc
+    reward <- time "miner reward lookup" $! liftIO $! minerReward rs bh
+    cr <- time "applyCoinbase" $! liftIO $! applyCoinbase logger dbEnv miner reward pd parentHash enfCBFail mc
     return $! toHashCommandResult cr
 
 -- | Apply multiple Pact commands, incrementing the transaction Id for each.
@@ -1121,9 +1156,10 @@ execPreInsertCheckReq txs = do
                 now <- liftIO getCurrentTimeIntegral
                 psEnv <- ask
                 psState <- get
-                liftIO (Discard <$>
-                        validateChainwebTxs cp (BlockCreationTime now) (h + 1) txs
-                        (runGas pdb psState psEnv) (_psEnableUserContracts psEnv))
+                return $ Discard (Right <$> txs)
+                -- liftIO (Discard <$>
+                --         validateChainwebTxs cp (BlockCreationTime now) (h + 1) txs
+                --         (runGas pdb psState psEnv) (_psEnableUserContracts psEnv))
   where
     runGas pdb pst penv ts =
         evalPactServiceM pst penv (attemptBuyGas noMiner pdb ts)

@@ -74,6 +74,7 @@ module Chainweb.Pact.Types
   , psBlockTime
   , psParentHash
   , psSpvSupport
+  , psReqTime
 
     -- * Pact Service Monad
   , PactServiceM(..)
@@ -92,6 +93,7 @@ module Chainweb.Pact.Types
   , justInstallsExecutionConfig
   ) where
 
+import Control.Concurrent.MVar
 import Control.Lens hiding ((.=))
 import Control.Monad.Catch
 import Control.Monad.Fail
@@ -298,6 +300,7 @@ data PactServiceState = PactServiceState
     , _psBlockTime :: {-# UNPACK #-} !BlockCreationTime
     , _psParentHash :: !(Maybe BlockHash)
     , _psSpvSupport :: !SPVSupport
+    , _psReqTime :: !(MVar (Maybe (Time Micros)))
     }
 makeLenses ''PactServiceState
 

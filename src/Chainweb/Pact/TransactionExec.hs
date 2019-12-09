@@ -32,9 +32,11 @@ module Chainweb.Pact.TransactionExec
 
   -- * Gas Execution
 , buyGas
+, mkBuyGasCmd
 
   -- * Coinbase Execution
 , applyCoinbase
+, mkCoinbaseCmd
 , EnforceCoinbaseFailure(..)
 
   -- * Command Helpers
@@ -70,7 +72,7 @@ import Data.Tuple.Strict (T2(..))
 
 -- internal Pact modules
 
-import Pact.Eval (liftTerm, lookupModule, eval)
+import Pact.Eval (liftTerm, lookupModule)
 import Pact.Gas (freeGasEnv)
 import Pact.Gas.Table
 import Pact.Interpreter
@@ -94,8 +96,8 @@ import Pact.Types.SPV
 import Chainweb.BlockHash
 import Chainweb.Miner.Pact
 import Chainweb.Pact.Service.Types (internalError)
-import Chainweb.Pact.Templates
 import Chainweb.Pact.Types
+import Chainweb.Time hiding (second)
 import Chainweb.Transaction
 import Chainweb.Utils (sshow)
 
@@ -234,6 +236,13 @@ applyGenesisCmd logger dbEnv pd spv cmd =
         Left e -> fatal $ "Genesis command failed: " <> sshow e
         Right r -> r <$ debug "successful genesis tx for request key"
 
+time :: MonadIO m => Text -> m a -> m a
+time !label !act = do
+  t0 <- liftIO $ getCurrentTimeIntegral @Micros
+  a <- act
+  t1 <- liftIO $ getCurrentTimeIntegral @Micros
+  liftIO $ print $ label <> ": " <> sshow (t1 `diff` t0)
+  return a
 
 applyCoinbase
     :: Logger
@@ -258,17 +267,19 @@ applyCoinbase logger dbEnv (Miner mid mks) reward@(ParsedDecimal d) pd ph
   where
     tenv = TransactionEnv Transactional dbEnv logger pd noSPVSupport
            Nothing 0.0 rk 0 restrictiveExecutionConfig
-    txst = TransactionState mc mempty 0 Nothing (_geGasModel freeGasEnv)
-    initState = initCapabilities [magic_COINBASE]
+    txst =TransactionState mc mempty 0 Nothing (_geGasModel freeGasEnv)
+    interp = initStateInterpreter $! initCapabilities [magic_COINBASE]
     chash = Pact.Hash (sshow ph)
     rk = RequestKey chash
 
     go = do
-      let (cterm,cexec) = mkCoinbaseTerm mid mks reward
-          interp = Interpreter $ \_input -> do
-            put initState
-            pure <$> eval cterm
-      cr <- catchesPactError $!
+
+      cexec <- liftIO $! mkCoinbaseCmd mid mks reward
+
+      liftIO $! print cexec
+      liftIO $! print pd
+      liftIO $! print chash
+      cr <- time "applyExec'" $! catchesPactError $!
         applyExec' interp cexec mempty chash managedNamespacePolicy
 
       case cr of
@@ -416,7 +427,7 @@ applyExec' interp (ExecMsg parsedCode execData) senderSigs hsh nsp
     | otherwise = do
 
       eenv <- mkEvalEnv nsp (MsgData execData Nothing hsh senderSigs)
-      er <- liftIO $! evalExec interp eenv parsedCode
+      er <- time "evalExec" $! liftIO $! evalExec interp eenv parsedCode
 
       for_ (_erExec er) $ \pe -> debug
         $ "applyExec: new pact added: "
@@ -475,7 +486,8 @@ buyGas cmd (Miner mid mks) = go
   where
     sender = view (cmdPayload . pMeta . pmSender) cmd
     initState mc = setModuleCache mc $ initCapabilities [magic_GAS]
-
+    interp mc = Interpreter $ \input ->
+      put (initState mc) >> run input
     run input = do
       findPayer >>= \r -> case r of
         Nothing -> input
@@ -488,9 +500,7 @@ buyGas cmd (Miner mid mks) = go
       mcache <- use txCache
       supply <- gasSupplyOf <$> view txGasLimit <*> view txGasPrice
 
-      let (!buyGasTerm, !buyGasCmd) = mkBuyGasTerm mid mks sender supply
-          interp mc = Interpreter $ \_input ->
-            put (initState mc) >> run (pure <$> eval buyGasTerm)
+      buyGasCmd <- liftIO $! mkBuyGasCmd mid mks sender supply
 
       result <- applyExec' (interp mcache) buyGasCmd
         (_pSigners $ _cmdPayload cmd) bgHash managedNamespacePolicy
@@ -498,8 +508,6 @@ buyGas cmd (Miner mid mks) = go
       case _erExec result of
         Nothing -> fatal "buyGas: Internal error - empty continuation"
         Just pe -> void $! txGasId .= (Just $! GasId (_pePactId pe))
-
-
 
 findPayer :: Eval e (Maybe (Eval e [Term Name] -> Eval e [Term Name]))
 findPayer = runMaybeT $ do
@@ -560,6 +568,43 @@ redeemGas cmd = do
     redeemGasCmd fee (GasId pid) =
       ContMsg pid 1 False (object [ "fee" A..= fee ]) Nothing
 
+-- | Build the 'coin-contract.buygas' command
+--
+mkBuyGasCmd
+    :: MinerId   -- ^ Id of the miner to fund
+    -> MinerKeys -- ^ Miner keyset
+    -> Text      -- ^ Address of the sender from the command
+    -> GasSupply -- ^ The gas limit total * price
+    -> IO (ExecMsg ParsedCode)
+mkBuyGasCmd (MinerId mid) (MinerKeys ks) sender total =
+    buildExecParsedCode buyGasData $ mconcat
+      [ "(coin.fund-tx"
+      , " \"" <> sender <> "\""
+      , " \"" <> mid <> "\""
+      , " (read-keyset \"miner-keyset\")"
+      , " (read-decimal \"total\"))"
+      ]
+  where
+    buyGasData = Just $ object
+      [ "miner-keyset" A..= ks
+      , "total" A..= total
+      ]
+{-# INLINABLE mkBuyGasCmd #-}
+
+mkCoinbaseCmd :: MinerId -> MinerKeys -> ParsedDecimal -> IO (ExecMsg ParsedCode)
+mkCoinbaseCmd (MinerId mid) (MinerKeys ks) reward =
+    buildExecParsedCode coinbaseData $ mconcat
+      [ "(coin.coinbase"
+      , " \"" <> mid <> "\""
+      , " (read-keyset \"miner-keyset\")"
+      , " (read-decimal \"reward\"))"
+      ]
+  where
+    coinbaseData = Just $ object
+      [ "miner-keyset" A..= ks
+      , "reward" A..= reward
+      ]
+{-# INLINABLE mkCoinbaseCmd #-}
 
 -- ---------------------------------------------------------------------------- --
 -- Utilities
@@ -573,7 +618,10 @@ initCapabilities cs = set (evalCapabilities . capStack) cs def
 {-# INLINABLE initCapabilities #-}
 
 initStateInterpreter :: EvalState -> Interpreter p
-initStateInterpreter s = Interpreter $ (put s >>)
+initStateInterpreter s = Interpreter $ \(!e) -> do
+    put $! s
+    !e' <- e
+    return $! e'
 
 
 checkTooBigTx
@@ -693,6 +741,7 @@ buildExecParsedCode value code = maybe (go Null) go value
       -- if we can't construct coin contract calls, this should
       -- fail fast
       Left err -> internalError $ "buildExecParsedCode: parse failed: " <> T.pack err
+
 
 -- | Retrieve public metadata from a command
 --
