@@ -179,7 +179,10 @@ applyCmd logger pdbenv miner gasModel pd spv cmdIn mcache0 ecMod =
         Left e -> do
           r <- jsonErrorResult e "tx failure for request key when running cmd"
           redeemAllGas r
-        Right r -> applyRedeem r
+        Right r -> do
+          logs <- use txLogs
+          logTxLogs logs
+          applyRedeem r
 
     applyRedeem cr = do
       txGasModel .= (_geGasModel freeGasEnv)
@@ -324,7 +327,10 @@ applyLocal logger dbEnv pd spv cmdIn mc =
 
       case cr of
         Left e -> jsonErrorResult e "applyLocal"
-        Right r -> return $! r { _crMetaData = Just (toJSON pd) }
+        Right r -> do
+          logs <- use txLogs
+          logTxLogs logs
+          return $! r { _crMetaData = Just (toJSON pd) }
 
     go = do
       em <- case _pPayload $ _cmdPayload cmd of
@@ -332,6 +338,17 @@ applyLocal logger dbEnv pd spv cmdIn mc =
         _ -> throwCmdEx "local continuations not supported"
 
       checkTooBigTx gas0 gasLimit (applyPayload em) return
+
+
+logTxLogs :: [TxLog Value] -> TransactionM p ()
+logTxLogs logs = do
+  rk <- view txRequestKey
+  l <- view txLogger
+  liftIO
+    $! logLog l "ERROR"
+    $! "TX LOG for " <> show rk <>
+       show (logs)
+
 
 jsonErrorResult
     :: PactError
