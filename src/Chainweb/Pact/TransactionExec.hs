@@ -420,6 +420,14 @@ applyExec' interp (ExecMsg parsedCode execData) senderSigs hsh nsp
 
       eenv <- mkEvalEnv nsp (MsgData execData Nothing hsh senderSigs)
       er <- liftIO $! evalExec interp eenv parsedCode
+      l <- view txLogger
+      rk <- view txRequestKey
+
+      liftIO
+        $! logLog l "ERROR"
+        $! "Gas Logs"
+        <> ": " <> show rk
+        <> ": " <> show (_erLogGas er)
 
       for_ (_erExec er) $ \pe -> debug
         $ "applyExec: new pact added: "
@@ -601,6 +609,7 @@ gasInterpreter :: Gas -> TransactionM db (Interpreter p)
 gasInterpreter g = do
     mc <- use txCache
     return $ initStateInterpreter
+        $ set evalLogGas (Just [])   -- enable gas logs
         $ set evalGas g
         $ setModuleCache mc def
 
