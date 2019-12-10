@@ -71,8 +71,8 @@ import Data.Tuple.Strict (T2(..))
 -- internal Pact modules
 
 import Pact.Eval (liftTerm, lookupModule, eval)
-import Pact.Gas (freeGasEnv)
-import Pact.Gas.Table
+import Pact.Gas (freeGasEnv, constGasModel)
+--import Pact.Gas.Table
 import Pact.Interpreter
 import Pact.Native.Capabilities (evalCap)
 import Pact.Parse (parseExprs)
@@ -313,7 +313,7 @@ applyLocal logger dbEnv pd spv cmdIn mc =
     gasLimit = gasLimitOf cmd
     tenv = TransactionEnv Local dbEnv logger pd spv nid gasPrice
            rk (fromIntegral gasLimit) permissiveExecutionConfig
-    gasmodel = tableGasModel defaultGasConfig
+    gasmodel = constGasModel 1--tableGasModel defaultGasConfig
     txst = TransactionState mc mempty 0 Nothing gasmodel
     gas0 = initialGasOf (_cmdPayload cmdIn)
 
