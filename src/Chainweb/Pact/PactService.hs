@@ -82,7 +82,7 @@ import Prelude hiding (lookup)
 
 import Pact.Compile (compileExps)
 import qualified Pact.Gas as P
-import Pact.Gas.Table
+--import Pact.Gas.Table
 import qualified Pact.Interpreter as P
 import qualified Pact.Parse as P
 import qualified Pact.Types.ChainMeta as P
@@ -198,7 +198,7 @@ initPactService' ver cid chainwebLogger bhDb pdb dbDir nodeid doResetDb
                            initBlockState sqlenv logger
 
       let !rs = readRewards ver
-          !gasModel = tableGasModel defaultGasConfig
+          !gasModel = P.constGasModel 1 --tableGasModel defaultGasConfig
           !t0 = BlockCreationTime $ Time (TimeSpan (Micros 0))
           !pse = PactServiceEnv
                  { _psMempoolAccess = Nothing
