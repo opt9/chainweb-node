@@ -82,7 +82,7 @@ import Prelude hiding (lookup)
 
 import Pact.Compile (compileExps)
 import qualified Pact.Gas as P
---import Pact.Gas.Table
+import Pact.Gas.Table
 import qualified Pact.Interpreter as P
 import qualified Pact.Parse as P
 import qualified Pact.Types.ChainMeta as P
@@ -198,7 +198,7 @@ initPactService' ver cid chainwebLogger bhDb pdb dbDir nodeid doResetDb
                            initBlockState sqlenv logger
 
       let !rs = readRewards ver
-          !gasModel = P.constGasModel 1 --tableGasModel defaultGasConfig
+          !gasModel = officialGasModel
           !t0 = BlockCreationTime $ Time (TimeSpan (Micros 0))
           !pse = PactServiceEnv
                  { _psMempoolAccess = Nothing
@@ -849,7 +849,7 @@ execLocal cmd = withDiscardedBatch $ do
         mc <- use psInitCache
         pd <- mkPublicData "execLocal" (publicMetaOf $! payloadObj <$> cmd)
         spv <- use psSpvSupport
-        r <- liftIO $ applyLocal (_cpeLogger _psCheckpointEnv) pdbenv pd spv cmd mc
+        r <- liftIO $ applyLocal (_cpeLogger _psCheckpointEnv) pdbenv officialGasModel pd spv cmd mc
         return $! Discard (toHashCommandResult r)
 
 logg :: String -> String -> PactServiceM cas ()
@@ -1221,3 +1221,20 @@ findLatestValidBlock = getCheckpointer >>= liftIO . _cpGetLatestBlock >>= \case
 
 getCheckpointer :: PactServiceM cas Checkpointer
 getCheckpointer = view (psCheckpointEnv . cpeCheckpointer)
+
+-- | Modified table gas module with free module loads
+--
+freeModuleLoadGasModel :: P.GasModel
+freeModuleLoadGasModel = modifiedGasModel
+  where
+    defGasModel = tableGasModel defaultGasConfig
+    fullRunFunction = P.runGasModel defGasModel
+    modifiedRunFunction name ga = case ga of
+      P.GPostRead (P.ReadModule {}) -> 0
+      _ -> fullRunFunction name ga
+    modifiedGasModel = defGasModel { P.runGasModel = modifiedRunFunction }
+
+-- | Gas Model used in /send and /local
+--
+officialGasModel :: P.GasModel
+officialGasModel = freeModuleLoadGasModel
