@@ -58,8 +58,8 @@ import Control.Monad.Trans.Maybe
 import Data.Aeson hiding ((.=))
 import qualified Data.Aeson as A
 import Data.Bifunctor
---import qualified Data.ByteString as B
---import qualified Data.ByteString.Short as SB
+import qualified Data.ByteString as B
+import qualified Data.ByteString.Short as SB
 import Data.Decimal (Decimal, roundTo)
 import Data.Default (def)
 import Data.Foldable (for_)
@@ -618,7 +618,7 @@ gasInterpreter g = do
 --   ignoring the size of a continuation proof, if present
 --
 initialGasOf :: PayloadWithText -> Gas
-initialGasOf _cmd = Gas 0 {-- gasFee
+initialGasOf cmd = gasFee
   where
     feePerByte :: Decimal = 0.01
 
@@ -630,16 +630,16 @@ initialGasOf _cmd = Gas 0 {-- gasFee
 
     costPerByte = fromIntegral txSize * feePerByte
     sizePenalty = txSizeAccelerationFee costPerByte
-    gasFee = ceiling (costPerByte + sizePenalty) --}
+    gasFee = ceiling (costPerByte + sizePenalty)
 {-# INLINE initialGasOf #-}
 
-{--txSizeAccelerationFee :: Decimal -> Decimal
+txSizeAccelerationFee :: Decimal -> Decimal
 txSizeAccelerationFee costPerByte = total
   where
     total = (costPerByte / bytePenalty) ^ power
     bytePenalty = 512
     power :: Integer = 7
-{-# INLINE txSizeAccelerationFee #-} --}
+{-# INLINE txSizeAccelerationFee #-}
 
 -- | Set the module cache of a pact 'EvalState'
 --
