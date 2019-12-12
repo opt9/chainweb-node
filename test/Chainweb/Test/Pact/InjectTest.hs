@@ -9,24 +9,6 @@ module Chainweb.Test.Pact.InjectTest
 , tests
 ) where
 
-import Data.Text (Text)
-import qualified Data.Text as T
-
-import System.IO.Unsafe
-
-import Test.Tasty
-import Test.Tasty.Hspec hiding (after)
-
-import Pact.Parse
-import Pact.Types.Exp
-import Pact.Types.RPC
-import Pact.Types.Term
-
-import Chainweb.Graph
-import Chainweb.Miner.Pact
-import Chainweb.Pact.Templates
-import Chainweb.Version
-
 import Control.Concurrent.MVar
 import Control.Exception (throwIO)
 import Control.Lens
@@ -36,28 +18,42 @@ import qualified Data.Aeson as A
 import Data.CAS.HashMap hiding (toList)
 import qualified Data.HashMap.Strict as HM
 import Data.String.Conv (toS)
+import qualified Data.Text as T
+import Data.Text (Text)
 import Data.Vector (Vector)
 import qualified Data.Vector as V
 
+import System.IO.Unsafe
 import System.IO.Extra
 import System.LogLevel
 
-import Pact.Types.ChainMeta
+import Test.Tasty.HUnit
+import Test.Tasty
+import Test.Tasty.Hspec hiding (after)
+
+import Pact.Parse
 import qualified Pact.Types.ChainId as P
+import Pact.Types.ChainMeta
 import qualified Pact.Types.Command as P
-import qualified Pact.Types.Hash as P
+import Pact.Types.Exp
 import qualified Pact.Types.Exp as P
+import qualified Pact.Types.Hash as P
+import Pact.Types.RPC
 import qualified Pact.Types.PactValue as P
+import Pact.Types.Term
 
 -- internal modules
 import Chainweb.BlockHash
 import Chainweb.BlockHeader
 import Chainweb.BlockHeader.Genesis
 import Chainweb.BlockHeaderDB hiding (withBlockHeaderDb)
+import Chainweb.Graph
+import Chainweb.Miner.Pact
 import Chainweb.Pact.Backend.Types
 import Chainweb.Pact.Service.BlockValidation
 import Chainweb.Pact.Service.PactQueue
 import Chainweb.Pact.Service.Types
+import Chainweb.Pact.Templates
 import Chainweb.Payload
 import Chainweb.Payload.PayloadStore.Types
 import Chainweb.Test.Pact.Utils
@@ -65,6 +61,7 @@ import Chainweb.Test.Utils
 import Chainweb.Time
 import Chainweb.Transaction
 import qualified Chainweb.TreeDB as TDB
+import Chainweb.Version
 
 main :: IO ()
 main = do
@@ -100,29 +97,6 @@ fixedInjTest =
                   T.unpack pccode `shouldNotContain` "coinbase"
                   T.unpack pccode `shouldNotContain` "read-keyset"
 
-----------------------------------------------------------------------------------------------------
--- Test data
-----------------------------------------------------------------------------------------------------
-badMinerId :: MinerId
-badMinerId = MinerId "a30ffd3ba7fa08d4aafcfd9f15594d20e732b8fdda43f02470d76b7ebfa467e6\" (read-keyset \"miner-keyset\") 23045.23) (coin.coinbase \"a30ffd3ba7fa08d4aafcfd9f15594d20e732b8fdda43f02470d76b7ebfa467e6"
-
-badCodeStr :: Text
-badCodeStr = "(coin.coinbase \"a30ffd3ba7fa08d4aafcfd9f15594d20e732b8fdda43f02470d76b7ebfa467e6\" (read-keyset \"miner-keyset\") 23045.23) (coin.coinbase \"a30ffd3ba7fa08d4aafcfd9f15594d20e732b8fdda43f02470d76b7ebfa467e6\" (read-keyset \"miner-keyset\") (read-decimal \"reward\"))"
-
-_testVersion :: ChainwebVersion
-_testVersion = FastTimedCPM petersonChainGraph
-
-minerKeys0 :: MinerKeys
-minerKeys0 = MinerKeys $ mkKeySet
-  ["f880a433d6e2a13a32b6169030f56245efdd8c1b8a5027e9ce98a88e886bef27"]
-  "default"
-
-_minerId0 :: MinerId
-_minerId0 = MinerId "default miner"
-
-----------------------------------------------------------------------------------------------------
--- Borrowed from ForkTests...
-----------------------------------------------------------------------------------------------------
 validationTest ::  TestTree
 validationTest =
     withRocksResource $ \rocksIO ->
@@ -145,34 +119,61 @@ testBadBlock pdb iobhdb cid dir header = do
     bhdb <- iobhdb
     mVar <- newMVar (0 :: Int)
     return $ withPact testVer Warn pdb iobhdb (testMemPoolAccess cid mVar) dir 100000
-        (\reqQIO -> unsafePerformIO (testSpec "someText" (validationSpec bhdb header reqQIO iobhdb)))
+        (\reqQIO -> unsafePerformIO (testSpec "someText" (injectPactSpec bhdb header reqQIO )))
 
-validationSpec
+injectPactSpec
   :: BlockHeaderDb
   -> BlockHeader
   -> IO PactQueue
-  -> IO BlockHeaderDb
   -> Spec
-validationSpec db parent reqQIO iodb = do
+injectPactSpec db parent reqQIO =
     describe "injection vulnerability test" $
-        it "tries to validate a block with the bad miner id" $ do
+        it "tries to inject code via a malicious miner id" $ do
             reqQ <- reqQIO
 
-            (fromNew, fromVal, _newHeader) <- processBlock db parent reqQ iodb
-            fromNew `shouldBe` fromVal
-            fromVal `shouldBe` (7 :: Int)
+            -- process new block w/a malicious miner (as occurs when requesting a block to mine...)
+            let miner = mkMaliciousMiner
+            (_fromNew, _fromVal, _newHeader) <- processBlock miner db parent reqQ
 
-testVer :: ChainwebVersion
-testVer = FastTimedCPM petersonChainGraph
+            -- exec a local tx reading the acct used by the malicious miner
+            locVar <- getBalanceLocal badMinerAcct >>= (\cwt -> local cwt reqQ)
+            loc <- takeMVar locVar
+            let theResult = case loc of
+                  Left pe -> assertFailure $ show pe
+                  Right cmd -> do
+                    case P._crResult cmd of
+                        P.PactResult (Right (P.PLiteral (P.LDecimal n))) -> return $ fromEnum n
+                        _someOther -> assertFailure "Expected Pact Literal (Decimal)"
+            theResult `shouldBe` badMinerAmt
+
+getBalanceLocal :: Text -> IO ChainwebTransaction
+getBalanceLocal acct = do
+    d <- adminData
+    fmap (head . V.toList)
+      $ toCWTransactions
+      $ V.fromList [ PactTransaction ("(coin.getBalance \"" ++ show acct ++ "\")") d ]
+
+toCWTransactions :: Vector PactTransaction -> IO (Vector ChainwebTransaction)
+toCWTransactions txs = do
+    ks <- testKeyPairs sender00KeyPair Nothing
+    mkTestExecTransactions "sender00" "0" ks "1" 100000 0.00001 1000000 0 txs
+
+mkMaliciousMiner :: Miner
+mkMaliciousMiner =
+    let minerKeySet = mkKeySet
+          ["f8880a433d6e2a13a32b6169030f56245efdd8c1b8a5027e9ce98a88e886bef27"]
+          "keys-all"
+    in Miner badMinerId $ MinerKeys minerKeySet
 
 processBlock
-    :: BlockHeaderDb
+    :: Miner
+    -> BlockHeaderDb
     -> BlockHeader
     -> PactQueue
-    -> IO BlockHeaderDb
     -> IO (Int, Int, BlockHeader)
-processBlock db parent reqQ iodb = do
-    mvNew <- runNewBlock parent reqQ iodb
+processBlock miner db parent reqQ = do
+    let blockCreateTime = BlockCreationTime $ Time $ secondsToTimeSpan $ Seconds $ succ 1000000
+    mvNew <- newBlock miner parent blockCreateTime reqQ
     (plwoNew, asIntNew) <- getResult mvNew
     new' <- mkProperNewBlock db plwoNew parent
     mvVal <- runValidateBlock plwoNew new' reqQ
@@ -205,15 +206,6 @@ txAsIntResult txOut = do
           case res of
               P.PactResult (Right (P.PLiteral (P.LDecimal n))) -> return $ fromEnum n
               _someOther -> return 0
-
-runNewBlock
-    :: BlockHeader
-    -> PactQueue
-    -> IO BlockHeaderDb
-    -> IO (MVar (Either PactException PayloadWithOutputs))
-runNewBlock parentBlock reqQ _iodb = do
-    let blockTime = Time $ secondsToTimeSpan $ Seconds $ succ 1000000
-    newBlock noMiner parentBlock (BlockCreationTime blockTime) reqQ
 
 -- validate the same transactions as sent to newBlock
 runValidateBlock
@@ -275,21 +267,9 @@ txsFromHeight mvar 2 = do
     d <- adminData
     return $ V.fromList
         ( [ PactTransaction { _pactCode = injectAttempt1 , _pactData = d } ] )
--- txsFromHeight mvar 3 = do
---     _ <- modifyMVar mvar (\n -> return (n + 1, n + 1))
---     d <- adminData
---     return $ V.fromList ( [ PactTransaction { _pactCode = injectAttempt2 , _pactData = d } ] )
 txsFromHeight mvar _h = do
     _newCount <- modifyMVar mvar (\n -> return (n + 1, n + 1))
     return V.empty
-
-injectAttempt1 :: Text
-injectAttempt1 = "(free.inject-test.read-account \"Acct2\")"
-
-toCWTransactions :: P.ChainId -> Vector PactTransaction -> IO (Vector ChainwebTransaction)
-toCWTransactions pactCid txs = do
-    ks <- testKeyPairs sender00KeyPair Nothing
-    mkTestExecTransactions "sender00" pactCid ks "1" 100000 0.00001 1000000 0 txs
 
 modifyPayloadWithText
     :: (P.Payload PublicMeta P.ParsedCode -> P.Payload PublicMeta P.ParsedCode)
@@ -299,3 +279,38 @@ modifyPayloadWithText f pwt = mkPayloadWithText newPayload
   where
     oldPayload = payloadObj pwt
     newPayload = f oldPayload
+
+----------------------------------------------------------------------------------------------------
+-- Test data
+----------------------------------------------------------------------------------------------------
+badMinerAmt :: Double
+badMinerAmt = 9999999.99
+
+badMinerAcct :: Text
+badMinerAcct = "alpha"
+
+badMinerId :: MinerId
+badMinerId = MinerId ("alpha\" (read-keyset \"miner-keyset\")"
+  `T.append` (show badMinerAmt) `T.append` ")(coin.coinbase \"alpha\")")
+
+badCodeStr :: Text
+badCodeStr = "(coin.coinbase \"alpha\" (read-keyset \"miner-keyset\")"
+  `T.append` (show badMinerAmt) `T.append`
+  ") (coin.coinbase \"alpha\" (read-keyset \"miner-keyset\") (read-decimal \"reward\"))"
+
+_testVersion :: ChainwebVersion
+_testVersion = FastTimedCPM petersonChainGraph
+
+minerKeys0 :: MinerKeys
+minerKeys0 = MinerKeys $ mkKeySet
+  ["f880a433d6e2a13a32b6169030f56245efdd8c1b8a5027e9ce98a88e886bef27"]
+  "default"
+
+_minerId0 :: MinerId
+_minerId0 = MinerId "default miner"
+
+testVer :: ChainwebVersion
+testVer = FastTimedCPM petersonChainGraph
+
+injectAttempt1 :: Text
+injectAttempt1 = "(free.inject-test.read-account \"Acct2\")"
