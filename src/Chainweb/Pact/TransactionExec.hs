@@ -73,7 +73,6 @@ import Data.Tuple.Strict (T2(..))
 
 import Pact.Eval (liftTerm, lookupModule, eval)
 import Pact.Gas (freeGasEnv)
-import Pact.Gas.Table
 import Pact.Interpreter
 import Pact.Native.Capabilities (evalCap)
 import Pact.Parse (parseExprs)
@@ -299,6 +298,8 @@ applyLocal
       -- ^ Pact logger
     -> PactDbEnv p
       -- ^ Pact db environment
+    -> GasModel
+      -- ^ Gas model (pact Service config)
     -> PublicData
       -- ^ Contains block height, time, prev hash + metadata
     -> SPVSupport
@@ -307,7 +308,7 @@ applyLocal
       -- ^ command with payload to execute
     -> ModuleCache
     -> IO (CommandResult [TxLog Value])
-applyLocal logger dbEnv pd spv cmdIn mc =
+applyLocal logger dbEnv gasModel pd spv cmdIn mc =
     evalTransactionM tenv txst go
   where
     cmd = payloadObj <$> cmdIn
@@ -319,8 +320,7 @@ applyLocal logger dbEnv pd spv cmdIn mc =
     gasLimit = gasLimitOf cmd
     tenv = TransactionEnv Local dbEnv logger pd spv nid gasPrice
            rk (fromIntegral gasLimit) permissiveExecutionConfig
-    gasmodel = tableGasModel defaultGasConfig
-    txst = TransactionState mc mempty 0 Nothing gasmodel
+    txst = TransactionState mc mempty 0 Nothing gasModel
     gas0 = initialGasOf (_cmdPayload cmdIn)
 
     applyPayload em = do
@@ -634,6 +634,7 @@ initCapabilities cs = set (evalCapabilities . capStack) cs def
 
 initStateInterpreter :: EvalState -> Interpreter p
 initStateInterpreter s = Interpreter $ (put s >>)
+
 
 -- | Check whether the cost of running a tx is more than the allowed
 -- gas limit and do some action depending on the outcome

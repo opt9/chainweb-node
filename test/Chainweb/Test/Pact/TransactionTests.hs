@@ -29,22 +29,32 @@ import Data.Default
 
 -- internal pact modules
 
+import Pact.Gas
+import Pact.Parse
 import Pact.Repl
 import Pact.Repl.Types
 import Pact.Types.Command
-import Pact.Types.Runtime
+import qualified Pact.Types.Hash as H
 import Pact.Types.Logger
+import Pact.Types.PactValue
+import Pact.Types.RPC
+import Pact.Types.Runtime
+import Pact.Types.SPV
 import Pact.Interpreter
 
 
 -- internal chainweb modules
+
+import Chainweb.BlockHash
+import Chainweb.Miner.Pact
+import Chainweb.Pact.Templates
 import Chainweb.Pact.TransactionExec
 import Chainweb.Pact.Types
 import Chainweb.Test.Utils
-import Chainweb.Miner.Pact
-import Chainweb.BlockHash
-import Chainweb.Utils
 import Chainweb.Time
+import Chainweb.Utils
+import Chainweb.Version
+
 
 coinRepl :: FilePath
 coinRepl = "pact/coin-contract/coin.repl"
@@ -60,23 +70,19 @@ tests = testGroup "Chainweb.Test.Pact.TransactionTests"
     , testCase "Ns Repl Tests" (ccReplTests "pact/namespaces/ns.repl")
     , testCase "Payer Repl Tests" (ccReplTests "pact/gas-payer/gas-payer-v1.repl")
     ]
-  , testGroup "Coinbase tests"
-    [ testCase "testCoinbase" testCoinbase
-    --, testCase "testCoinbaseGenesis" testCoinbaseGenesis
-    , testCase "testCoinbase791Fix" testCoinbase797Fix
-    , testCase "testCoinbaseNewBlock" testCoinbaseNewBlock
+  , testGroup "Precompiled Statements Tests"
+    [ testCase "Basic Injection Test" baseInjTest
+    , testCase "Fixed Injection Test" fixedInjTest
+    ]
+  , testGroup "Coinbase Vuln Fix Tests"
+    [ testCoinbase797DateFix
     , testCase "testCoinbaseEnforceFailure" testCoinbaseEnforceFailure
     ]
   ]
 
 
-buildExecWithData :: Assertion
-buildExecWithData = void $ buildExecParsedCode
-  (Just $ object [ "data" .= (1 :: Int) ]) "(+ 1 1)"
-
-buildExecWithoutData :: Assertion
-buildExecWithoutData = void $ buildExecParsedCode Nothing "(+ 1 1)"
-
+-- ---------------------------------------------------------------------- --
+-- Coin Contract repl tests
 
 ccReplTests :: FilePath -> Assertion
 ccReplTests ccFile = do
@@ -100,55 +106,118 @@ loadCC = do
       mc = view (rEvalState . evalRefs . rsLoadedModules) rst
   return (pdb,mc)
 
+-- ---------------------------------------------------------------------- --
+-- Template vuln tests
 
-testCoinbase :: Assertion
-testCoinbase = do
-  (pdb,mc) <- loadCC
-  void $ applyCoinbase toyVersion logger pdb miner 0.1 pubData blockHsh
-       (EnforceCoinbaseFailure True) (CoinbaseUsePrecompiled False)
-       mc
+baseInjTest :: Assertion
+baseInjTest = mkCoinbaseCmd badMinerId minerKeys0 (ParsedDecimal 1.0) >>= \case
+    ExecMsg (ParsedCode pccode _pcexps) _pmdata ->
+      assertEqual "Precompiled exploit yields correct code" (unpack pccode) exploit
   where
-    miner = noMiner
-    pubData = PublicData def blockHeight' blockTime (toText blockHash')
-    blockHsh@(BlockHash blockHash') = nullBlockHash
-    blockTime = toInt64 [timeMicrosQQ| 2019-12-17T01:00:00.0 |]
-    toInt64 (Time (TimeSpan (Micros m))) = m
-    blockHeight' = 123
-    logger = newLogger neverLog ""
+    exploit = "(coin.coinbase \"alpha\" (read-keyset \"miner-keyset\") 9999999.99)"
+      <> "(coin.coinbase \"alpha\" (read-keyset \"miner-keyset\") (read-decimal \"reward\"))"
 
-testCoinbase797Fix :: Assertion
-testCoinbase797Fix = do
+fixedInjTest :: Assertion
+fixedInjTest = case exec of
+    ExecMsg (ParsedCode pccode _pcexps) _pmdata
+      | isInfixOf "coinbase" pccode -> assertFailure
+        $ "Precompiled statement contains exploitable code: "
+        <> unpack pccode
+      | isInfixOf "read-keyset" pccode -> assertFailure
+        $ "Precompiled statement contains exploitable code: "
+        <> unpack pccode
+      | otherwise -> return ()
+  where
+    (_, exec) = mkCoinbaseTerm badMinerId minerKeys0 (ParsedDecimal 1.0)
+
+
+buildExecWithData :: Assertion
+buildExecWithData = void $ buildExecParsedCode
+  (Just $ object [ "data" .= (1 :: Int) ]) "(+ 1 1)"
+
+buildExecWithoutData :: Assertion
+buildExecWithoutData = void $ buildExecParsedCode Nothing "(+ 1 1)"
+
+badMinerId :: MinerId
+badMinerId = MinerId ("alpha\" (read-keyset \"miner-keyset\") 9999999.99)(coin.coinbase \"alpha")
+
+minerKeys0 :: MinerKeys
+minerKeys0 = MinerKeys $ mkKeySet
+    ["f880a433d6e2a13a32b6169030f56245efdd8c1b8a5027e9ce98a88e886bef27"]
+    "default"
+
+-- ---------------------------------------------------------------------- --
+-- Vuln 792 fork tests
+
+testCoinbase797DateFix :: TestTree
+testCoinbase797DateFix = testCaseSteps "testCoinbase791Fix" $ \step -> do
     (pdb,mc) <- loadCC
-    void $ applyCoinbase toyVersion logger pdb miner 0.1 pubData blockHsh
-     (EnforceCoinbaseFailure True) (CoinbaseUsePrecompiled False) mc
-  where
-    miner = noMiner
-    pubData = PublicData def blockHeight' blockTime (toText blockHash')
-    blockHsh@(BlockHash blockHash') = nullBlockHash
-    blockTime = toInt64 [timeMicrosQQ| 2019-12-16T01:00:00.0 |]
-    toInt64 (Time (TimeSpan (Micros m))) = m
-    blockHeight' = 123
-    logger = newLogger neverLog ""
 
-testCoinbaseNewBlock :: Assertion
-testCoinbaseNewBlock = do
-    (pdb,mc) <- loadCC
-    r <- try $ applyCoinbase toyVersion logger pdb miner 0.1 pubData blockHsh
-      (EnforceCoinbaseFailure True) (CoinbaseUsePrecompiled False) mc
-    case r of
-      Left (e :: SomeException) -> assertFailure $ "Coinbase tx failed: " <> show e
-      Right (CommandResult _ _ (PactResult (Left e)) _ _ _ _) ->
-        if isInfixOf "exploitable" (sshow e) then
-          return ()
-        else assertFailure (show e)
-      Right cr -> assertFailure $ "Code succeeded and did not fail" <> show cr
+    step "pre-fork code injection succeeds, no enforced precompile"
+
+    cmd <- buildExecParsedCode Nothing "(coin.get-balance \"tester01\")"
+
+    doCoinbaseExploit pdb mc preForkTime cmd False $ \pr -> case pr of
+      Left _ -> assertFailure "local call to get-balance failed"
+      Right (PLiteral (LDecimal d))
+        | d == 1000.1 -> return ()
+        | otherwise -> assertFailure $ "miner balance is incorrect: " <> show d
+      Right l -> assertFailure $ "wrong return type: " <> show l
+
+    step "post-fork code injection fails, no enforced precompile"
+
+    cmd' <- buildExecParsedCode Nothing
+      "(coin.get-balance \"tester01\\\" (read-keyset \\\"miner-keyset\\\") 1000.0)(coin.coinbase \\\"tester01\")"
+
+    doCoinbaseExploit pdb mc postForkTime cmd' False $ \pr -> case pr of
+      Left _ -> assertFailure "local call to get-balance failed"
+      Right (PLiteral (LDecimal d))
+        | d == 0.1 -> return ()
+        | otherwise -> assertFailure $ "miner balance is incorrect: " <> show d
+      Right l -> assertFailure $ "wrong return type: " <> show l
+
+    step "pre-fork code injection fails, enforced precompile"
+
+    doCoinbaseExploit pdb mc preForkTime cmd' True $ \pr -> case pr of
+      Left _ -> assertFailure "local call to get-balance failed"
+      Right (PLiteral (LDecimal d))
+        | d == 0.2 -> return ()
+        | otherwise -> assertFailure $ "miner balance is incorrect: " <> show d
+      Right l -> assertFailure $ "wrong return type: " <> show l
+
+    step "post-fork code injection fails, enforced precompile"
+
+    doCoinbaseExploit pdb mc postForkTime cmd' True $ \pr -> case pr of
+      Left _ -> assertFailure "local call to get-balance failed"
+      Right (PLiteral (LDecimal d))
+        | d == 0.3 -> return ()
+        | otherwise -> assertFailure $ "miner balance is incorrect: " <> show d
+      Right l -> assertFailure $ "wrong return type: " <> show l
+
   where
+    doCoinbaseExploit pdb mc t localCmd precompile testResult = do
+      let pd = PublicData def blockHeight' t (toText blockHash')
+
+      void $ applyCoinbase Mainnet01 logger pdb miner 0.1 pd blockHsh
+        (EnforceCoinbaseFailure True) (CoinbaseUsePrecompiled precompile) mc
+
+      let h = H.toUntypedHash (H.hash "" :: H.PactHash)
+          tenv = TransactionEnv Transactional pdb logger def
+            noSPVSupport Nothing 0.0 (RequestKey h) 0 permissiveExecutionConfig
+          txst = TransactionState mempty mempty 0 Nothing (_geGasModel freeGasEnv)
+
+      CommandResult _ _ (PactResult pr) _ _ _ _ <- evalTransactionM tenv txst $!
+        applyExec defaultInterpreter localCmd [] h permissiveNamespacePolicy
+
+      testResult pr
+
     miner = Miner
-      (MinerId "NoMiner\" (read-keyset \"miner-keyset\") 1000.0)(module m g (defcap g () true ) (defun k () (enforce false \"exploitable\"))) (m.k) (coin.coinbase \"NoMiner")
-      (MinerKeys $ mkKeySet [] "<")
-    pubData = PublicData def blockHeight' blockTime (toText blockHash')
+      (MinerId "tester01\" (read-keyset \"miner-keyset\") 1000.0)(coin.coinbase \"tester01")
+      (MinerKeys $ mkKeySet ["b67e109352e8e33c8fe427715daad57d35d25d025914dd705b97db35b1bfbaa5"] "keys-all")
+
     blockHsh@(BlockHash blockHash') = nullBlockHash
-    blockTime = toInt64 [timeMicrosQQ| 2019-12-16T01:00:00.0 |]
+    preForkTime = toInt64 [timeMicrosQQ| 2019-12-09T01:00:00.0 |]
+    postForkTime = toInt64 [timeMicrosQQ| 2019-12-11T01:00:00.0 |]
     toInt64 (Time (TimeSpan (Micros m))) = m
     blockHeight' = 123
     logger = newLogger neverLog ""
@@ -163,12 +232,12 @@ testCoinbaseEnforceFailure = do
         if isInfixOf "Coinbase tx failure" (sshow e) then
           return ()
         else assertFailure $ "Coinbase failed for unknown reason: " <> show e
-      Right _ -> assertFailure "Coinbase did not failure on bad miner id"
+      Right _ -> assertFailure "Coinbase did not fail for bad miner id"
   where
     miner = Miner (MinerId "") (MinerKeys $ mkKeySet [] "<")
     pubData = PublicData def blockHeight' blockTime (toText blockHash')
     blockHsh@(BlockHash blockHash') = nullBlockHash
-    blockTime = toInt64 [timeMicrosQQ| 2019-12-17T01:00:00.0 |]
+    blockTime = toInt64 [timeMicrosQQ| 2019-12-10T01:00:00.0 |]
     toInt64 (Time (TimeSpan (Micros m))) = m
     blockHeight' = 123
     logger = newLogger neverLog ""
