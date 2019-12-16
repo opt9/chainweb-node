@@ -81,7 +81,7 @@ common debugging-flags
 common warning-flags
     ghc-options:
         -Wall
-        -Werror
+        -- -Werror
         -Wcompat
         -Wpartial-fields
         -Wincomplete-record-updates
@@ -93,6 +93,18 @@ common warning-flags
         -- This needed because -Werror and missing-home-modules causes
         -- problems with ghci.
         -Wno-missing-home-modules
+
+common performance-flags
+    ghc-options:
+        -ddump-simpl
+        -ddump-stg
+        -ddump-stranal
+        -ddump-to-file
+        -dsuppress-idinfo
+        -dsuppress-coercions
+        -dsuppress-type-applications
+        -dsuppress-uniques
+        -dsuppress-module-prefixes
 
 custom-setup
     setup-depends:
@@ -108,7 +120,7 @@ custom-setup
 -- -------------------------------------------------------------------------- --
 
 library
-    import: warning-flags, debugging-flags
+    import: warning-flags, debugging-flags, performance-flags
     default-language: Haskell2010
     hs-source-dirs: src
     other-modules:
@@ -420,6 +432,7 @@ library
         build-depends: systemd >= 1.2
         cpp-options: -DWITH_SYSTEMD=1
     if flag(ghc-flags)
+        build-tool-depends: hsinspect:hsinspect
         ghc-options: -fplugin GhcFlags.Plugin
         build-depends: ghcflags
 
